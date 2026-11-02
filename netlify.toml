@@ -1,0 +1,8 @@
+[build]
+  command = "echo 'Weather briefing ready - no Hugo required'"
+  publish = "public"
+  functions = "netlify/functions"
+[build.environment]
+  NODE_VERSION = "22"
+[functions]
+  node_bundler = "esbuild"
