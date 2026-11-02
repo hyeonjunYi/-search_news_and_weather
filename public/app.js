@@ -70,29 +70,17 @@ async function load(){
  lines.push('특보 원문: https://www.weather.go.kr/w/special-report/overall.do');$('summary').value=lines.join('\n');$('status').textContent='조회 '+fmt(b.retrievedAt)+' · '+(b.weather.status==='ok'?'날씨 수신':'날씨 실패')+' / '+(a.status==='ok'?'특보 표 수신':'특보 실패');
  }catch(e){$('status').textContent='자료 조회 실패. Netlify에 전체 파일을 배포했는지 확인하고 다시 시도하세요.';$('warnings').innerHTML='<p class="error">특보 유무 미확인 · 기상청 공식 현황을 확인하세요.</p>';$('condition').textContent='조회 실패';$('hourly').innerHTML='<tr><td colspan="6">날씨 조회 실패</td></tr>';$('summary').value='자료 조회 실패 · 기상특보 유무 미확인';}finally{$('refresh').disabled=false;}
 }
-$('refresh').onclick=()=>{load();loadTides();loadForest();loadFireAlert()};$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('summary').value);$('copy').textContent='복사 완료';setTimeout(()=>$('copy').textContent='요약 복사',1500)}catch{$('summary').focus();$('summary').select();$('status').textContent='요약문을 선택했습니다. Ctrl+C로 복사하세요.'}};initMap();load();loadTides();loadForest();loadFireAlert();initForestManual();
+$('refresh').onclick=()=>{load();loadTides();loadForest()};$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('summary').value);$('copy').textContent='복사 완료';setTimeout(()=>$('copy').textContent='요약 복사',1500)}catch{$('summary').focus();$('summary').select();$('status').textContent='요약문을 선택했습니다. Ctrl+C로 복사하세요.'}};initMap();load();loadTides();loadForest();
 
 $('tideRefresh').onclick=loadTides;
 
 async function loadForest(){
- $('forestStatus').textContent='공식 발령현황 조회 중…';$('forestItems').replaceChildren();
- try{const r=await fetch('/.netlify/functions/forest',{cache:'no-store',signal:AbortSignal.timeout(18000)});if(!r.ok)throw Error();const d=await r.json();if(d.status!=='ok')throw Error();$('forestStatus').textContent='산림청 발령표 · 조회 '+fmt(d.retrievedAt);$('forestItems').innerHTML=d.items.map(x=>'<article class="forest-record"><strong class="stage-'+escape(x.stage)+'">'+escape(x.stage)+'</strong><p>발령지역: '+escape(x.area)+'</p><p>발령일시: '+escape(x.announced)+'</p></article>').join('');
- }catch{$('forestStatus').textContent='현재 단계 자동 확인 불가 · 산림청 공식 현황을 확인하세요.'}
-}
-function initForestManual(){
- const show=()=>{try{const d=JSON.parse(localStorage.getItem('forestManual')||'null');$('forestManual').textContent=d?'[수동 기록] '+d.stage+' / '+d.area+' / 발령 '+d.issued.replace('T',' ')+' KST / 확인 '+fmt(d.checkedAt)+' · 최신 여부 재확인 필요':'수동 기록 없음'}catch{$('forestManual').textContent='기록 저장소 사용 불가'}};
- $('forestSave').onclick=()=>{const stage=$('forestStage').value,area=$('forestArea').value.trim(),issued=$('forestIssued').value;if(!stage||!area||!issued){$('forestManual').textContent='단계·적용 지역·발령일시를 모두 입력하세요.';return}try{localStorage.setItem('forestManual',JSON.stringify({stage,area,issued,checkedAt:new Date().toISOString()}));show()}catch{$('forestManual').textContent='기록 저장 실패'}};
- $('forestClear').onclick=()=>{try{localStorage.removeItem('forestManual');show()}catch{}};show();
+ $('forestStatus').textContent='산림청 원본 조회 중';$('forestStageText').textContent='조회 중';$('forestStageText').setAttribute('fill','#666');$('forestNeedle').setAttribute('visibility','hidden');$('forestWidget').setAttribute('aria-label','산불경보수준 조회 중 · 산림청 원문 새 창');
+ try{const r=await fetch('/.netlify/functions/forest',{cache:'no-store',signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error();const d=await r.json();const i=['관심','주의','경계','심각'].indexOf(d.stage);if(d.status!=='ok'||i<0||!Array.isArray(d.items))throw Error();
+ $('forestStageText').textContent=d.stage;$('forestStageText').setAttribute('fill',['#2769b4','#8a6500','#bc5200','#bf1420'][i]);$('forestNeedle').setAttribute('transform','rotate('+[-67.5,-22.5,22.5,67.5][i]+' 120 125)');$('forestNeedle').setAttribute('visibility','visible');
+ $('forestStatus').textContent='산림청 · '+new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(d.retrievedAt))+' 조회 ↗';
+ const detail='산불경보수준 '+d.stage+' · '+d.items.map(x=>x.area+' / 발령 '+x.announced).join('; ')+' · 조회 '+fmt(d.retrievedAt)+' · 화면 활성 중 5분마다 갱신';$('forestWidget').setAttribute('title',detail);$('forestWidget').setAttribute('aria-label',detail+' · 산림청 원문 새 창');
+ }catch{$('forestStageText').textContent='미확인';$('forestStatus').textContent='조회 실패 · 원문 확인 ↗';$('forestWidget').setAttribute('title','자동 조회 실패 · 산림청 원문에서 확인하세요.');$('forestWidget').setAttribute('aria-label','산불경보수준 미확인 · 산림청 원문 새 창')}
 }
 
-async function loadFireAlert(){
- $('fireStatus').textContent='최근 확인 발령자료 읽는 중…';$('fireRecord').replaceChildren();
- try{
- const r=await fetch('data/fire-alert.json',{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const d=await r.json();
- if(!['주의','경계','심각','해제'].includes(d.stage)||!d.area||!/^\d{4}-\d{2}-\d{2}$/.test(d.verifiedDate)||!Number.isFinite(Date.parse(d.issuedAt)))throw Error();
- const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date());
- $('fireStatus').textContent=d.verifiedDate===today?'최근 확인된 발령 · '+d.verifiedDate+' 확인 (실시간 연동 아님)':'현재 단계 미확인 · 아래는 '+d.verifiedDate+' 확인 기록입니다. 변경·해제 여부를 재확인하세요.';
- const url=new URL(d.sourceUrl);if(url.protocol!=='https:')throw Error();
- $('fireRecord').innerHTML='<article class="forest-record"><p>최근 확인된 단계</p><strong class="stage-'+escape(d.stage)+'">'+escape(d.stage)+'</strong><p>적용 지역: '+escape(d.area)+'</p><p>발령일시: '+escape(fmt(d.issuedAt))+'</p><p>확인 기준: '+escape(d.verifiedDate)+' / '+escape(d.basis)+'</p><p>'+escape(d.note)+'</p><a href="'+escape(url.href)+'" target="_blank" rel="noopener">확인 자료 원문 ↗</a></article>';
- }catch{$('fireRecord').replaceChildren();$('fireStatus').textContent='화재위험경보 자료 확인 불가 · 충남소방본부 공식 발표를 확인하세요.'}
-}
+setInterval(()=>{if(document.visibilityState==='visible')loadForest()},5*60*1000);
