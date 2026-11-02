@@ -1,2 +1,10 @@
+# Static HTML deployment: override any Hugo command saved in Netlify UI.
 [build]
+  command = "echo 'Static HTML ready - no Hugo build required'"
   publish = "public"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

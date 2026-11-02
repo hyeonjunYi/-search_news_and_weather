@@ -1,3 +1,26 @@
+## Netlify Hugo 오류 수정판
+
+이 파일은 Hugo 사이트가 아닙니다. 최상위 netlify.toml에 명시한 정적 사이트 명령으로 Netlify UI의 기존 hugo 설정을 덮어씁니다. public/index.html도 포함되어 있습니다.
+
+**기존 저장소 수정 순서**
+1. ZIP을 압축 해제합니다. ZIP 자체가 아니라 내부 파일과 폴더를 올립니다.
+2. 기존 GitHub 저장소의 최상위 netlify.toml을 이번 파일로 반드시 교체합니다. 기존 public/index.html도 함께 갱신합니다.
+3. 전체 폴더를 한 단계 안쪽에 올리지 마세요. GitHub 첫 화면에 netlify.toml, watch.py, public 폴더가 보여야 합니다.
+4. Netlify Base directory는 비워 두고 Publish directory는 public으로 설정합니다. Package directory가 있다면 비워 둡니다.
+5. Netlify Deploys에서 재배포합니다. 로그에 hugo 대신 Static HTML ready가 나오는지 확인합니다.
+6. 처음에는 표시할 보고서가 없다는 목록이 나옵니다. 가상 예시는 demo-preview/index.html을 로컬 브라우저에서 열어 확인하세요.
+
+netlify.toml 전체 예시:
+```toml
+[build]
+  command = "echo 'Static HTML ready - no Hugo build required'"
+  publish = "public"
+```
+
+**공개 사이트 배포와 뉴스 수집은 별도입니다.** GitHub Secrets를 등록하고 Actions를 실행해야 실제 기사가 수집됩니다. 자동 생성 초안은 Actions Artifact에서 검토하며 승인한 보고서만 public에 게시합니다.
+
+---
+
 # 계룡소방서 현장대응단 — 화재 뉴스 수집·보고서 초안
 
 네이버 뉴스 API에서 최근 기사를 수집하고 사망·대응 2~3단계 관련 후보를 선별해 인쇄 가능한 1장 HTML 보고서 초안을 만듭니다. **초기 버전으로 제목·검색 요약 기반 규칙 선별만 수행합니다. AI 본문 분석, 피해 인원 확정, 사건 단위 통합, 사진 수집, 알림 발송은 구현하지 않았습니다.** 누락·오탐이 있으며 긴급 상황 전파 수단을 대체하지 않습니다.
@@ -29,7 +52,7 @@ python watch.py --demo
 ```
 python review.py 기사ID --editor "검토자" --fields 검토내용.json
 ```
-4. data/records.json과 public/ 변경을 GitHub에 올립니다. Netlify에서 저장소를 연결하고 **Publish directory를 public**으로 설정합니다. 빌드 명령은 비웁니다. 승인본만 public/에 들어갑니다. 최초 public/은 빈 목록입니다.
+4. data/records.json과 public/ 변경을 GitHub에 올립니다. Netlify에서 저장소를 연결하고 **Publish directory를 public**으로 설정합니다. 빌드 명령은 netlify.toml의 정적 사이트 확인 명령을 사용합니다. Hugo는 사용하지 않습니다. 승인본만 public/에 들어갑니다. 최초 public/은 빈 목록입니다.
 
 주의: 승인 처리는 검토자의 수동 명령으로 동작하며 별도 로그인·전자결재 기능이 아닙니다. 기사 제목 변경 시 승인을 해제하지만 본문 변경은 API 메타데이터로 감지하지 못하므로 주기적 원문 재확인이 필요합니다. 원문 URL로 중복을 제거하며 서로 다른 언론사의 같은 사건은 별도 초안으로 남습니다. 재산피해·인원 등의 자동 추출은 하지 않습니다. 한 장 인쇄는 기본 분량 기준이며 긴 수동 입력은 여러 장이 될 수 있습니다.
 
