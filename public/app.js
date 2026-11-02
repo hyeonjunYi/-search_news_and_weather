@@ -34,7 +34,26 @@ function paintMap(){
  path.style.fill=fill;const detail=ok?(matches.length?matches.map(x=>x.kind+' '+x.level).join(', '):'관련 특보 미검출'):'특보 미확인';path.setAttribute('aria-label',area+' · '+detail+' · 상세 보기');path.querySelector('title').textContent=area+' · '+detail;
  });
 }
+function gyeryongWarningState(data){
+ if(!data)return {state:'loading',text:'계룡시 기상특보 조회 중…',note:'최신 자료를 확인하고 있습니다.'};
+ if(data.status!=='ok'||!Array.isArray(data.items))return {state:'unknown',text:'계룡시 기상특보 확인 불가',note:'조회 실패 · 기상청 공식 현황을 확인하세요.'};
+ const hits=[],uncertain=[];
+ for(const item of data.items){
+ const area=String(item.area||'');
+ if(!/계룡|충청남도|충남|전국/.test(area))continue;
+ if(/계룡/.test(area)){if(/제외|해제/.test(area))uncertain.push(item);else hits.push(item);continue}
+ // Explicit province/national coverage is a candidate; named subsets and exclusions require review.
+ if(/제외|일부|내륙|북부|남부|동부|서부|산지|[（(]/.test(area)){uncertain.push(item);continue}
+ if(/해상|앞바다|먼바다|연안/.test(area))continue;
+ hits.push(item);
+ }
+ if(hits.length)return {state:'active',text:'계룡시 기상특보 · '+[...new Set(hits.map(x=>x.kind+' '+x.level))].join(' / '),note:'현재 특보 표 기준 · 발효시각과 적용구역은 아래 상세에서 확인하세요.'};
+ if(uncertain.length)return {state:'unknown',text:'계룡시 기상특보 · 적용지역 확인 필요',note:'충남·전국 관련 특보의 일부지역·제외조건을 공식 원문에서 확인하세요.'};
+ return {state:'none',text:'계룡시 기상특보 없음',note:'조회된 현재 특보 표 기준 · 예비특보는 기상청 원문에서 별도 확인하세요.'};
+}
+function renderGyeryongAlert(){const a=gyeryongWarningState(warningData);$('gyeryongAlert').className='local-alert '+a.state;$('gyeryongAlertText').textContent=a.text;$('gyeryongAlertNote').textContent=a.note}
 function renderWarnings(){
+ renderGyeryongAlert();
  paintMap();
  $('selectedRegion').textContent=selectedRegion+' 관련 특보';
  document.querySelectorAll('[data-region]').forEach(el=>{const yes=el.dataset.region===selectedRegion;el.setAttribute('aria-pressed',String(yes));el.classList.toggle('selected',yes)});
@@ -68,7 +87,7 @@ async function load(){
  }else{$('condition').textContent='날씨 조회 실패';$('hourly').innerHTML='<tr><td colspan="6">날씨 조회 실패</td></tr>';lines.push('날씨: 조회 실패');}
  const a=b.warnings;warningData=a;renderWarnings();lines.push('기상특보 조회: '+(a.status==='ok'?'전국 현재 특보 표 '+a.items.length+'건 수신 · 지역별 탭에서 확인':'조회 실패 · 유무 미확인'));
  lines.push('특보 원문: https://www.weather.go.kr/w/special-report/overall.do');$('summary').value=lines.join('\n');$('status').textContent='조회 '+fmt(b.retrievedAt)+' · '+(b.weather.status==='ok'?'날씨 수신':'날씨 실패')+' / '+(a.status==='ok'?'특보 표 수신':'특보 실패');
- }catch(e){$('status').textContent='자료 조회 실패. Netlify에 전체 파일을 배포했는지 확인하고 다시 시도하세요.';$('warnings').innerHTML='<p class="error">특보 유무 미확인 · 기상청 공식 현황을 확인하세요.</p>';$('condition').textContent='조회 실패';$('hourly').innerHTML='<tr><td colspan="6">날씨 조회 실패</td></tr>';$('summary').value='자료 조회 실패 · 기상특보 유무 미확인';}finally{$('refresh').disabled=false;}
+ }catch(e){warningData={status:'error'};renderGyeryongAlert();$('status').textContent='자료 조회 실패. Netlify에 전체 파일을 배포했는지 확인하고 다시 시도하세요.';$('warnings').innerHTML='<p class="error">특보 유무 미확인 · 기상청 공식 현황을 확인하세요.</p>';$('condition').textContent='조회 실패';$('hourly').innerHTML='<tr><td colspan="6">날씨 조회 실패</td></tr>';$('summary').value='자료 조회 실패 · 기상특보 유무 미확인';}finally{$('refresh').disabled=false;}
 }
 $('refresh').onclick=()=>{load();loadTides();loadForest()};$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('summary').value);$('copy').textContent='복사 완료';setTimeout(()=>$('copy').textContent='요약 복사',1500)}catch{$('summary').focus();$('summary').select();$('status').textContent='요약문을 선택했습니다. Ctrl+C로 복사하세요.'}};initMap();load();loadTides();loadForest();
 
