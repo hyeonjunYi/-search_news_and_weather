@@ -14,13 +14,34 @@ const regions={
  '경상남도':['경남','경상남도','창원','진주','통영','사천','김해','밀양','거제','양산','의령','함안','창녕','고성','남해','하동','산청','함양','거창','합천'],
  '제주특별자치도':['제주','서귀포'], '전국':[]
 };
+const warningColors={'강풍':'#157f89','풍랑':'#1760b5','호우':'#2946cf','대설':'#7655c2','건조':'#c85b12','폭염':'#c52e42','한파':'#338abb','태풍':'#9c369b','해일':'#12734f','황사':'#97721a','기타':'#646b78'};
+const kindOf=x=>Object.keys(warningColors).find(k=>x.kind.includes(k))||'기타';
+function relatedWarnings(region){return warningData?.status==='ok'?warningData.items.filter(x=>/전국/.test(x.area)||regions[region].some(n=>x.area.includes(n))):[]}
+function paintMap(){
+ const svg=document.querySelector('#map svg');
+ $('mapLegend').innerHTML=Object.entries(warningColors).map(([kind,color])=>'<span class="legend-item"><i style="background:'+color+'"></i>'+kind+'</span>').join('')+'<span class="legend-item"><i style="background:#e4e8ef"></i>관련 항목 미검출</span>';
+ const ok=warningData?.status==='ok';
+ $('mapStatus').textContent=ok?'특보 종류별 색상 · 여러 종류는 줄무늬 · 회색은 관련 항목 미검출(특보 없음 확정 아님)':'특보 자료 미확인 · 지도 색상으로 특보 유무를 판단하지 마세요.';
+ if(!svg)return;
+ let defs=svg.querySelector('defs');if(defs)defs.remove();defs=document.createElementNS('http://www.w3.org/2000/svg','defs');svg.prepend(defs);
+ svg.querySelectorAll('path[data-region]').forEach((path,i)=>{
+ const area=path.dataset.region;
+ const matches=ok?relatedWarnings(area).filter(x=>!/(해상|먼바다|앞바다)/.test(x.area)):[];
+ const kinds=[...new Set(matches.map(kindOf))];
+ let fill=ok?'#e4e8ef':'#c9ced6';
+ if(kinds.length===1)fill=warningColors[kinds[0]];
+ if(kinds.length>1){const ns='http://www.w3.org/2000/svg',pattern=document.createElementNS(ns,'pattern');pattern.setAttribute('id','alert-'+i);pattern.setAttribute('patternUnits','userSpaceOnUse');pattern.setAttribute('width',kinds.length*9);pattern.setAttribute('height',kinds.length*9);pattern.setAttribute('patternTransform','rotate(35)');kinds.forEach((k,j)=>{const r=document.createElementNS(ns,'rect');r.setAttribute('x',j*9);r.setAttribute('width',9);r.setAttribute('height',kinds.length*9);r.setAttribute('fill',warningColors[k]);pattern.append(r)});defs.append(pattern);fill='url(#alert-'+i+')'}
+ path.style.fill=fill;const detail=ok?(matches.length?matches.map(x=>x.kind+' '+x.level).join(', '):'관련 특보 미검출'):'특보 미확인';path.setAttribute('aria-label',area+' · '+detail+' · 상세 보기');path.querySelector('title').textContent=area+' · '+detail;
+ });
+}
 function renderWarnings(){
+ paintMap();
  $('selectedRegion').textContent=selectedRegion+' 관련 특보';
  document.querySelectorAll('[data-region]').forEach(el=>{const yes=el.dataset.region===selectedRegion;el.setAttribute('aria-pressed',String(yes));el.classList.toggle('selected',yes)});
  $('region').value=selectedRegion;
  if(!warningData){$('warnings').textContent='특보 조회 중 · 유무 미확인';return}
  if(warningData.status!=='ok'){$('warnings').innerHTML='<p class="error">특보 자동 조회 실패 · 특보 유무 미확인</p>';return}
- const items=selectedRegion==='전국'?warningData.items:warningData.items.filter(x=>/전국/.test(x.area)||regions[selectedRegion].some(n=>x.area.includes(n)));
+ const items=selectedRegion==='전국'?warningData.items:relatedWarnings(selectedRegion);
  $('warnings').innerHTML='<p class="fine">관련 후보 '+items.length+'건 / 전국 표 '+warningData.items.length+'건</p>'+(items.length?items.map(x=>'<article class="warning"><h3>'+escape(x.kind+' '+x.level)+'</h3><p>'+escape(x.area)+'</p><p>발표 '+escape(x.announced)+' / 발효 '+escape(x.effective)+'</p>'+(x.end?'<p>'+escape(x.end)+'</p>':'')+'</article>').join(''):'<p>현재 특보 표에서 관련 명칭을 포함한 항목을 찾지 못했습니다. 특보 없음의 확정은 아니며 공식 현황을 확인하세요.</p>');
 }
 function selectRegion(name){if(!Object.hasOwn(regions,name))return;selectedRegion=name;renderWarnings()}
@@ -49,6 +70,29 @@ async function load(){
  lines.push('특보 원문: https://www.weather.go.kr/w/special-report/overall.do');$('summary').value=lines.join('\n');$('status').textContent='조회 '+fmt(b.retrievedAt)+' · '+(b.weather.status==='ok'?'날씨 수신':'날씨 실패')+' / '+(a.status==='ok'?'특보 표 수신':'특보 실패');
  }catch(e){$('status').textContent='자료 조회 실패. Netlify에 전체 파일을 배포했는지 확인하고 다시 시도하세요.';$('warnings').innerHTML='<p class="error">특보 유무 미확인 · 기상청 공식 현황을 확인하세요.</p>';$('condition').textContent='조회 실패';$('hourly').innerHTML='<tr><td colspan="6">날씨 조회 실패</td></tr>';$('summary').value='자료 조회 실패 · 기상특보 유무 미확인';}finally{$('refresh').disabled=false;}
 }
-$('refresh').onclick=()=>{load();loadTides()};$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('summary').value);$('copy').textContent='복사 완료';setTimeout(()=>$('copy').textContent='요약 복사',1500)}catch{$('summary').focus();$('summary').select();$('status').textContent='요약문을 선택했습니다. Ctrl+C로 복사하세요.'}};initMap();load();loadTides();
+$('refresh').onclick=()=>{load();loadTides();loadForest();loadFireAlert()};$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('summary').value);$('copy').textContent='복사 완료';setTimeout(()=>$('copy').textContent='요약 복사',1500)}catch{$('summary').focus();$('summary').select();$('status').textContent='요약문을 선택했습니다. Ctrl+C로 복사하세요.'}};initMap();load();loadTides();loadForest();loadFireAlert();initForestManual();
 
 $('tideRefresh').onclick=loadTides;
+
+async function loadForest(){
+ $('forestStatus').textContent='공식 발령현황 조회 중…';$('forestItems').replaceChildren();
+ try{const r=await fetch('/.netlify/functions/forest',{cache:'no-store',signal:AbortSignal.timeout(18000)});if(!r.ok)throw Error();const d=await r.json();if(d.status!=='ok')throw Error();$('forestStatus').textContent='산림청 발령표 · 조회 '+fmt(d.retrievedAt);$('forestItems').innerHTML=d.items.map(x=>'<article class="forest-record"><strong class="stage-'+escape(x.stage)+'">'+escape(x.stage)+'</strong><p>발령지역: '+escape(x.area)+'</p><p>발령일시: '+escape(x.announced)+'</p></article>').join('');
+ }catch{$('forestStatus').textContent='현재 단계 자동 확인 불가 · 산림청 공식 현황을 확인하세요.'}
+}
+function initForestManual(){
+ const show=()=>{try{const d=JSON.parse(localStorage.getItem('forestManual')||'null');$('forestManual').textContent=d?'[수동 기록] '+d.stage+' / '+d.area+' / 발령 '+d.issued.replace('T',' ')+' KST / 확인 '+fmt(d.checkedAt)+' · 최신 여부 재확인 필요':'수동 기록 없음'}catch{$('forestManual').textContent='기록 저장소 사용 불가'}};
+ $('forestSave').onclick=()=>{const stage=$('forestStage').value,area=$('forestArea').value.trim(),issued=$('forestIssued').value;if(!stage||!area||!issued){$('forestManual').textContent='단계·적용 지역·발령일시를 모두 입력하세요.';return}try{localStorage.setItem('forestManual',JSON.stringify({stage,area,issued,checkedAt:new Date().toISOString()}));show()}catch{$('forestManual').textContent='기록 저장 실패'}};
+ $('forestClear').onclick=()=>{try{localStorage.removeItem('forestManual');show()}catch{}};show();
+}
+
+async function loadFireAlert(){
+ $('fireStatus').textContent='최근 확인 발령자료 읽는 중…';$('fireRecord').replaceChildren();
+ try{
+ const r=await fetch('data/fire-alert.json',{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const d=await r.json();
+ if(!['주의','경계','심각','해제'].includes(d.stage)||!d.area||!/^\d{4}-\d{2}-\d{2}$/.test(d.verifiedDate)||!Number.isFinite(Date.parse(d.issuedAt)))throw Error();
+ const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date());
+ $('fireStatus').textContent=d.verifiedDate===today?'최근 확인된 발령 · '+d.verifiedDate+' 확인 (실시간 연동 아님)':'현재 단계 미확인 · 아래는 '+d.verifiedDate+' 확인 기록입니다. 변경·해제 여부를 재확인하세요.';
+ const url=new URL(d.sourceUrl);if(url.protocol!=='https:')throw Error();
+ $('fireRecord').innerHTML='<article class="forest-record"><p>최근 확인된 단계</p><strong class="stage-'+escape(d.stage)+'">'+escape(d.stage)+'</strong><p>적용 지역: '+escape(d.area)+'</p><p>발령일시: '+escape(fmt(d.issuedAt))+'</p><p>확인 기준: '+escape(d.verifiedDate)+' / '+escape(d.basis)+'</p><p>'+escape(d.note)+'</p><a href="'+escape(url.href)+'" target="_blank" rel="noopener">확인 자료 원문 ↗</a></article>';
+ }catch{$('fireRecord').replaceChildren();$('fireStatus').textContent='화재위험경보 자료 확인 불가 · 충남소방본부 공식 발표를 확인하세요.'}
+}
